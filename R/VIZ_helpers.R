@@ -465,7 +465,8 @@
     #overwrites
     tmp.args<-tmp.args[!(names(tmp.args)%in%names(legend.args))]
     legend.args<-c(legend.args,tmp.args)
-    do.call(legend2,legend.args)
+    #found it necessary to add this to prevent certain extraneous parameters from getting passed and breaking the function
+    do.call(legend2,legend.args[names(legend.args)%in%names(formals(legend2))])
   }
 }
 

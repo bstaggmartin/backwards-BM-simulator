@@ -263,10 +263,10 @@ input.evorates<-function(tree,trait.data,trait.se=NULL,constrain.Rsig2=FALSE,tre
   if(length(tmp)==0){
     contra<-contra_var<-vector('numeric',0)
   }else{
-    contra<-tmp[1,]
-    contra_var<-tmp[2,]
+    contra<-array(tmp[1,])
+    contra_var<-array(tmp[2,])
   }
-  which_mis_SE<-which(p_SE==-1)
+  which_mis_SE<-array(which(p_SE==-1))
   n_mis_SE<-length(which_mis_SE)
   
   
@@ -835,7 +835,7 @@ output.evorates<-function(run.evorates.obj,stanfit=NULL,call=NULL,trans.const=NU
   sampler.params[,7,]<-extract(stanfit,"prior",permute=FALSE,inc_warmup=TRUE)
   sampler.params[,8,]<-extract(stanfit,"lik",permute=FALSE,inc_warmup=TRUE)
   sampler.params[,9,]<-sampler.params[,7,]+dat$lik_power*sampler.params[,8,]
-  out$sampler.control<-sampler.args[-2] #I think this is excluding a bunch of things somehow...
+  out$sampler.control<-sampler.args #I think this is excluding a bunch of things somehow...
   out$sampler.params<-sampler.params
   out$sampler.params<-.add.par.class(out$sampler.params)
   attr(out$sampler.params,'param_type')<-'chains'

@@ -7,15 +7,16 @@
 #not sure if it's appropriate since the namespace remains graphics...
 
 #' @export
-legend2<-function (x, y = NULL, legend, fill = NULL, col = par("col"), 
+legend2<-function (x, y = NULL, legend, fill = NULL, col = par("col"),
                    border = "black", lty, lwd, pch, angle = 45, density = NULL, 
                    bty = "o", bg = par("bg"), box.lwd = par("lwd"), box.lty = par("lty"), 
-                   box.col = par("fg"), pt.bg = NA, cex = 1, pt.cex = cex, 
-                   pt.lwd = lwd, xjust = 0, yjust = 1, x.intersp = 1, y.intersp = 1, 
-                   adj = c(0, 0.5), text.width = NULL, text.col = par("col"), 
-                   text.font = NULL, merge = do.lines && has.pch, trace = FALSE, 
-                   plot = TRUE, ncol = 1, horiz = FALSE, title = NULL, inset = 0, 
-                   xpd, title.col = text.col, title.adj = 0.5, seg.len = 2,
+                   box.col = par("fg"), pt.bg = NA, cex = 1, pt.cex = cex, pt.lwd = lwd, 
+                   xjust = 0, yjust = 1, x.intersp = 1, y.intersp = 1, adj = c(0, 0.5),
+                   text.width = NULL, text.col = par("col"), text.font = NULL, 
+                   merge = do.lines && has.pch, trace = FALSE, plot = TRUE, 
+                   ncol = 1, horiz = FALSE, title = NULL, inset = 0, xpd, title.col = text.col[1], 
+                   title.adj = 0.5, title.cex = cex[1], title.font = text.font[1], 
+                   seg.len = 2,
                    fill.lwd = NULL, fill.lty = NULL, ribbon.first = TRUE) 
 {
   if (missing(legend) && !missing(y) && (is.character(y) || 
@@ -29,13 +30,16 @@ legend2<-function (x, y = NULL, legend, fill = NULL, col = par("col"),
     on.exit(par(xpd = op))
     par(xpd = xpd)
   }
+  text.font <- if (is.null(text.font)) 
+    par("font")
+  else text.font
   title <- as.graphicsAnnot(title)
   if (length(title) > 1) 
     stop("invalid 'title'")
   legend <- as.graphicsAnnot(legend)
-  n.leg <- if (is.call(legend)) 
-    1
-  else length(legend)
+  if (any(sapply(legend, is.language))) 
+    legend <- as.expression(legend)
+  n.leg <- length(legend)
   if (n.leg == 0) 
     stop("'legend' is of length 0")
   auto <- if (is.character(x)) 
@@ -51,8 +55,13 @@ legend2<-function (x, y = NULL, legend, fill = NULL, col = par("col"),
       stop("invalid coordinate lengths")
   }
   else nx <- 0
+  reverse.xaxis <- par("xaxp")[1] > par("xaxp")[2]
+  reverse.yaxis <- par("yaxp")[1] > par("yaxp")[2]
   xlog <- par("xlog")
   ylog <- par("ylog")
+  cex <- rep(cex, length.out = n.leg)
+  x.intersp <- rep(x.intersp, length.out = n.leg)
+  seg.len <- rep(seg.len, length.out = n.leg)
   rect2 <- function(left, top, dx, dy, density = NULL, angle, 
                     ...) {
     r <- left + dx
@@ -81,14 +90,20 @@ legend2<-function (x, y = NULL, legend, fill = NULL, col = par("col"),
     }
     segments(x1, y1, x2, y2, ...)
   }
+  
+  
+  
   matplot2 <- function(x1, y1, dx, dy, ...){
     nn <- max(4, round(dx))
     a <- rep(c(-1, 0), length.out = nn)
     b <- rep(c(0, 1), length.out = nn)
-    xx <- do.call(cbind,lapply(x1, function(ii) seq(ii, ii + dx, length.out = nn)))
+    xx <- do.call(cbind,lapply(seq_along(x1), function(ii) seq(x1[ii], x1[ii] + dx[ii], length.out = nn)))
     yy <- matrix(y1, nn, length(y1), byrow = TRUE) + 0.5 * yc * runif(nn * length(y1), a, b)
     matplot(x = xx, y = yy, ..., add = TRUE, type = "l")
   }
+  
+  
+  
   points2 <- function(x, y, ...) {
     if (xlog) 
       x <- 10^x
@@ -103,28 +118,68 @@ legend2<-function (x, y = NULL, legend, fill = NULL, col = par("col"),
       y <- 10^y
     text(x, y, ...)
   }
+  colwise <- function(x, n, ncol, n.legpercol, fun, reverse = FALSE) {
+    xmat <- matrix(c(rep(x, length.out = n), rep(0L, n.legpercol * 
+                                                   ncol - n)), ncol = ncol)
+    res <- apply(xmat, 2, fun)
+    res[res == 0L] <- max(res)
+    if (reverse) 
+      -res
+    else res
+  }
+  rowwise <- function(x, n, ncol, n.legpercol, fun, reverse = FALSE) {
+    xmat <- matrix(c(rep(x, length.out = n), rep(0L, n.legpercol * 
+                                                   ncol - n)), ncol = ncol)
+    res <- apply(xmat, 1, fun)
+    if (reverse) 
+      -res
+    else res
+  }
   if (trace) {
     catn <- function(...) do.call(cat, c(lapply(list(...), 
                                                 formatC), "\n"))
     fv <- function(...) paste(vapply(lapply(list(...), formatC), 
                                      paste, collapse = ",", ""), collapse = ", ")
   }
+  n.legpercol <- if (horiz) {
+    if (ncol != 1) 
+      warning(gettextf("horizontal specification overrides: Number of columns := %d", 
+                       n.leg), domain = NA)
+    ncol <- n.leg
+    1
+  }
+  else ceiling(n.leg/ncol)
   Cex <- cex * par("cex")
   if (is.null(text.width)) 
-    text.width <- max(abs(strwidth(legend, units = "user", 
-                                   cex = cex, font = text.font)))
-  else if (!is.numeric(text.width) || text.width < 0) 
-    stop("'text.width' must be numeric, >= 0")
+    text.width <- max(abs(mapply(strwidth, legend, cex = cex, 
+                                 font = text.font, MoreArgs = list(units = "user"))))
+  else if ((length(text.width) > 1L && any(is.na(text.width))) || 
+           (all(!is.na(text.width)) && (!is.numeric(text.width) || 
+                                        any(text.width < 0)))) 
+    stop("'text.width' must be numeric, >= 0, or a scalar NA")
+  if (auto.text.width <- all(is.na(text.width))) {
+    text.width <- abs(mapply(strwidth, legend, cex = cex, 
+                             font = text.font, MoreArgs = list(units = "user")))
+    ncol <- ceiling(n.leg/n.legpercol)
+  }
   xyc <- xyinch(par("cin"), warn.log = FALSE)
   xc <- Cex * xyc[1L]
   yc <- Cex * xyc[2L]
-  if (any(n_ <- xc < 0)) 
-    text.width[n_] <- -text.width[n_]
+  if (any(xc < 0)) 
+    text.width <- -text.width
   xchar <- xc
   xextra <- 0
-  yextra <- yc * (y.intersp - 1)
-  ymax <- yc * max(1, strheight(legend, units = "user", cex = cex)/yc)
+  y.intersp <- rep(y.intersp, length.out = n.legpercol)
+  yextra <- rowwise(yc, n = n.leg, ncol = ncol, n.legpercol = n.legpercol, 
+                    fun = function(x) max(abs(x)), reverse = reverse.yaxis) * 
+    (y.intersp - 1)
+  ymax <- sign(yc[1]) * max(abs(yc)) * max(1, mapply(strheight, 
+                                                     legend, cex = cex, font = text.font, MoreArgs = list(units = "user"))/yc)
   ychar <- yextra + ymax
+  ymaxtitle <- title.cex * par("cex") * xyc[2L] * max(1, strheight(title, 
+                                                                   cex = title.cex, font = title.font, units = "user")/(title.cex * 
+                                                                                                                          par("cex") * xyc[2L]))
+  ychartitle <- yextra[1] + ymaxtitle
   if (trace) 
     catn("  xchar=", fv(xchar), "; (yextra, ychar)=", fv(yextra, 
                                                          ychar))
@@ -135,18 +190,10 @@ legend2<-function (x, y = NULL, legend, fill = NULL, col = par("col"),
   }
   do.lines <- (!missing(lty) && (is.character(lty) || any(lty > 
                                                             0))) || !missing(lwd)
-  n.legpercol <- if (horiz) {
-    if (ncol != 1) 
-      warning(gettextf("horizontal specification overrides: Number of columns := %d", 
-                       n.leg), domain = NA)
-    ncol <- n.leg
-    1
-  }
-  else ceiling(n.leg/ncol)
   has.pch <- !missing(pch) && length(pch) > 0
   if (do.lines) {
     x.off <- if (merge) 
-      -0.8
+      -0.7
     else 0
   }
   else if (merge) 
@@ -184,16 +231,30 @@ legend2<-function (x, y = NULL, legend, fill = NULL, col = par("col"),
       yjust <- 0.5
   }
   else {
-    h <- (n.legpercol + !is.null(title)) * ychar + yc
-    xch1 <- max(xchar)
-    w0 <- text.width + (x.intersp + 1) * xch1
+    yc <- rowwise(yc, n.leg, ncol, n.legpercol, fun = function(x) max(abs(x)), 
+                  reverse = reverse.yaxis)
+    h <- sum(ychar) + yc[length(yc)] + (!is.null(title)) * 
+      ychartitle
+    xch1 <- colwise(xchar, n.leg, ncol, n.legpercol, fun = function(x) max(abs(x)), 
+                    reverse = reverse.xaxis)
+    x.interspCol <- colwise(x.intersp, n.leg, ncol, n.legpercol, 
+                            fun = max)
+    seg.lenCol <- colwise(seg.len, n.leg, ncol, n.legpercol, 
+                          fun = max)
+    text.width <- colwise(text.width, n = if (auto.text.width) 
+      n.leg
+      else ncol, ncol, n.legpercol = if (auto.text.width) 
+        n.legpercol
+      else 1, fun = function(x) max(abs(x)), reverse = reverse.xaxis)
+    w0 <- text.width + (x.interspCol + 1) * xch1
     if (mfill) 
       w0 <- w0 + dx.fill
     if (do.lines) 
-      w0 <- w0 + (seg.len + x.off) * xch1
-    w <- ncol * w0 + 0.5 * xch1
+      w0 <- w0 + (seg.lenCol + x.off) * xch1
+    w <- sum(w0) + 0.5 * xch1[ncol]
     if (!is.null(title) && (abs(tw <- strwidth(title, units = "user", 
-                                               cex = cex) + 0.5 * xchar)) > abs(w)) {
+                                               cex = title.cex, font = title.font) + 0.5 * title.cex * 
+                                par("cex") * xyc[1L])) > abs(w)) {
       xextra <- (tw - w)/2
       w <- tw
     }
@@ -223,10 +284,14 @@ legend2<-function (x, y = NULL, legend, fill = NULL, col = par("col"),
     rect2(left, top, dx = w, dy = h, col = bg, density = NULL, 
           lwd = box.lwd, lty = box.lty, border = box.col)
   }
-  xt <- left + xchar + xextra + (w0 * rep.int(0:(ncol - 1), 
-                                              rep.int(n.legpercol, ncol)))[1L:n.leg]
-  yt <- top - 0.5 * yextra - ymax - (rep.int(1L:n.legpercol, 
-                                             ncol)[1L:n.leg] - 1 + !is.null(title)) * ychar
+  xt <- left + xc + xextra + rep(c(0, cumsum(w0))[1L:ncol], 
+                                 each = n.legpercol, length.out = n.leg)
+  topspace <- 0.5 * ymax + (!is.null(title)) * ychartitle
+  yt <- top - topspace - cumsum((c(0, ychar)/2 + c(ychar, 0)/2)[1L:n.legpercol])
+  yt <- rep(yt, length.out = n.leg)
+  
+  
+  
   if(ribbon.first){
     if (mfill) {
       if (plot) {
@@ -245,10 +310,16 @@ legend2<-function (x, y = NULL, legend, fill = NULL, col = par("col"),
       xt <- xt + dx.fill
     }
   }
+  
+  
+  
   if (plot && (has.pch || do.lines)) 
     col <- rep_len(col, n.leg)
   if (missing(lwd) || is.null(lwd)) 
     lwd <- par("lwd")
+  
+  
+  
   if (do.lines) {
     if (missing(lty) || is.null(lty)) 
       lty <- 1
@@ -284,6 +355,9 @@ legend2<-function (x, y = NULL, legend, fill = NULL, col = par("col"),
       }
     }
   }
+  
+  
+  
   if (has.pch) {
     pch <- rep_len(pch, n.leg)
     pt.bg <- rep_len(pt.bg, n.leg)
@@ -307,11 +381,12 @@ legend2<-function (x, y = NULL, legend, fill = NULL, col = par("col"),
       points2(x1, y1, pch = pch[ok], col = col[ok], cex = pt.cex[ok], 
               bg = pt.bg[ok], lwd = pt.lwd[ok])
   }
-  xt <- xt + x.intersp * xchar
+  xt <- xt + x.intersp * xc
   if (plot) {
     if (!is.null(title)) 
-      text2(left + w * title.adj, top - ymax, labels = title, 
-            adj = c(title.adj, 0), cex = cex, col = title.col)
+      text2(left + w * title.adj, top - ymaxtitle, labels = title, 
+            adj = c(title.adj, 0), cex = title.cex, col = title.col, 
+            font = title.font)
     text2(xt, yt, labels = legend, adj = adj, cex = cex, 
           col = text.col, font = text.font)
   }
